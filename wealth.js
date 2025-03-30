@@ -446,6 +446,53 @@ export class Wealth {
 		ui.notifications.notify(`Adjusted Wealth Die of ${n} character(s)`);
 	}
 
+	travelTime() {
+		Dialog.wait({
+			title: `Calculate Flight Time`,
+			content: `<p>Calculate travel time, assuming accelerating to the half-way point, turning around and decelerating until destination reached. To go 100 ly in a day, for example, requires accleration = 400. Acceleration is expressed as units of distance per day (squared).</p>
+			<table style="padding: 3px 3px 3px 3px">
+				<tr>
+					<td>Origin:</td>
+					<td><input id="origin" style="width: 200px" type="text"></input></td>
+				</tr>
+				<tr>
+					<td>Destination:</td>
+					<td><input id="destination" style="width: 200px" type="text"></input></td>
+				</tr>
+				<tr>
+					<td>Accleration:</td>
+					<td><input id="a" style="width: 200px" type="number" value="400"></input></td>
+				</tr>
+				<tr>
+					<td>Distance:</td>
+					<td><input id="s" style="width: 200px" type="text" value=""></input></td>
+				</tr>
+			</table>`,
+			buttons: {
+				ok: { label: "OK", callback: (html) =>
+					{
+						const a = Number(html.find('#a').val());
+						const s = html.find('#s').val();
+						const origin = html.find('#origin').val();
+						const destination = html.find('#destination').val();
+						const distance = s.replaceAll(/[^0-9]+/g, '');
+						let t = 2 * Math.sqrt(Number(distance) / a);
+						let units = 'day(s)';
+						if (t < 1) {
+							t = Math.round(t * 24);
+							units = 'hour(s)';
+						} else
+							t = Math.round(t);
+						ChatMessage.create({content: `Travel time ${origin?origin:'origin'} to ${destination?destination:'destination'}, distance ${s}: ${t} ${units} (a = ${a}).`});
+						return 1;
+					}
+				},
+				cancel: { label: "Cancel", callback: () => (0) },
+			},
+			close: () => ( 0 )
+		});
+	}
+
 	async rewardTokens() {
 		const reward = await Dialog.wait({
 			title: `Wealth Reward`,
