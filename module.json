@@ -1,0 +1,31 @@
+{
+  "id": "swade-ws",
+  "title": "SWADE Wealth System",
+  "description": "Use the Wealth Die to purchase items.",
+  "authors": [
+    {
+		"name": "flying-squad"
+    }
+  ],
+  "compatibility": {
+    "minimum": "11",
+    "verified": "12"
+  },
+  "esmodules": ["wealth.js"],
+  "relationships": {
+    "systems": [
+      {
+        "id": "swade",
+        "type": "system",
+        "compatibility": {
+          "minimum": "4.2.0",
+          "maximum": "4.5"
+		}
+	  }
+	]
+  },
+  "url": "https://github.com/flyingsquad/swade-charcheck",
+  "manifest": "https://raw.githubusercontent.com/flyingsquad/swade-ws/main/module.json",
+  "version": "0.0.0",
+  "download": "https://github.com/flyingsquad/swade-ws/archive/refs/tags/v0.2.2.zip"
+}
