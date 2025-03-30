@@ -7,102 +7,6 @@ export class Wealth {
 	wealthDie = null;
 	purchaseTable = [];
 
-	async createDialog(actor) {
-		this.actor = actor;
-
-		//callback with no arguments declared, theses can be declared in the function definition
-		//in that case we use a .bind(this) for the function (unless static) is specific to the instance it's in
-		//also, keeping a reference to the hook index for later unregister
-
-		let content =
-			  `<style>
-				td {
-					text-align: center;
-				}
-				.left {
-					text-align: left;
-				}
-			  </style>
-			  <form>
-			  <p id="prompt" height="60"></p>
-			  <table>
-				<tr>
-					<th class="left">Totals</th>
-					<th>Num</th>
-					<th>Pts</th>
-					<th>Avail</th>
-				</tr>
-				<tr>
-					<td class="left">Attributes</td>
-					<td id="numAttr"></td>
-					<td id="ptsAttr"></td>
-					<td id="availAttr"></td>
-				</tr>
-				<tr>
-					<td class="left">Skills</td>
-					<td id="numSkills"></td>
-					<td id="ptsSkills"></td>
-					<td id="availSkills"></td>
-				</tr>
-				<tr class="left">
-					<td class="left">Edges</td>
-					<td id="numEdges"></td>
-					<td id="ptsEdges"></td>
-					<td id="availEdges"></td>
-				</tr>
-				<tr>
-					<td class="left">Hindrances</td>
-					<td id="numHind"></td>
-					<td id="ptsHind"></td>
-					<td id="maxHind"></td>
-				</tr>
-				<tr>
-					<td class="left">Advances</td>
-					<td id="numAdv"></td>
-					<td id="ptsAdv"></td>
-					<td id="maxAdv"></td>
-				</tr>
-				<tr>
-					<td class="left">TOTAL</td>
-					<td></td>
-					<td id="ptsTotal"></td>
-					<td id="availTotal"></td>
-				</tr>
-			  </table>
-			  <p>Total Price of Gear: <span id="totalPrice"></span>, Currency: <span id="currency"></span></p>
-			</form>
-		  `;
-		
-		async function handleRender(pb, html) {
-			await pb.calcCost(html);
-			html.on('change', html, (e) => {
-				let html = e.data;
-				switch (e.target.nodeName) {
-				case 'INPUT':
-					break;
-				}
-			});
-		}
-
-		let leaving = true;
-
-		this.dlg = new Dialog({
-		  title: `Check Character: ${this.actor.name}`,
-		  content: content,
-		  buttons: {
-			cancel: {
-			  label: "Done",
-			  callback: (html) => {}
-			},
-		  },
-		  close: () => {},
-		  render: (html) => { handleRender(this, html); }
-		});
-		this.dlg.render(true);
-
-		return true;
-	}
-	
 	async setBaseWealth(actor) {
 		if (actor.getFlag('swade-ws', 'baseWealth'))
 			return;
@@ -111,7 +15,7 @@ export class Wealth {
 
 	async buy(item, sheet) {
 		let actor = sheet.parent;
-		if (actor.type != 'character')
+		if (actor.type != 'character' && actor.type != 'npc')
 			return;
 		if (!item?.system?.price)
 			return;
@@ -119,33 +23,34 @@ export class Wealth {
 		await this.setBaseWealth(actor);
 		
 		if (actor.system.details.wealth.die <= 0) {
-			const takeItAny = await Dialog.wait({
-				title: `You Are Broke`,
-				content: `You added ${item.name} to your Gear and you are Broke. Your Wealth die is 0.`,
+			const takeItAnyway = await Dialog.wait({
+				title: `${actor.name} Is Broke`,
+				content: `${actor.name} added ${item.name} to Gear and is <b>Broke</b>.`,
 				buttons: {
 					add: { label: "Add Anyway", callback: (html) => (true) },
 					dontAdd: { label: "Don't Add", callback: () => (false) },
 				},
 				close: () => ( false )
 			});
-			if (!takeItAny) {
+			if (!takeItAnyway) {
 				actor.deleteEmbeddedDocuments("Item", [item._id]);
 			} else {
-				ChatMessage.create({content: `You are <b>broke</b> and added ${item.name} anyway.`});
+				ChatMessage.create({content: `${actor.name} is <b>broke</b> and added ${item.name} anyway.`});
 			}
 			return;
 		}
 		
 		// Build the wealth roll table based on the current wealth die.
-
+		
 		let wd = actor.system.details.wealth.die;
+		let incidentals = wd * game.settings.get('swade-ws', 'incidentals');
+
 		if (this.wealthDie != wd) {
 			const wt = game.settings.get('swade-ws', 'wealthtable');
 			this.wealthDie = wd;
 			const entries = wt.split(/ *, */);
 			this.purchaseTable.length = 0;
-			this.purchaseTable.push({cost: wd * entries[0], modifier: null});
-			for (let i = 1; i < entries.length; i++) {
+			for (let i = 0; i < entries.length; i++) {
 				let [cost, modifier] = entries[i].split(/ *: */);
 				this.purchaseTable.push({cost: Number(cost), modifier: Number(modifier)});
 			}
@@ -158,7 +63,7 @@ export class Wealth {
 		const quantity = await Dialog.wait({
 			title: `Wealth Roll for ${item.name}`,
 			content: `<div style="display: table"><div style="display: table-cell">Add how many ${item.name} (price: $${item.system.price}):&nbsp;&nbsp;</div><div style="display: table-cell"><input id="quantity" style="width: 30px" type="number" size="2" value="${item.system.quantity}"></input></div></div>
-			<div style="display: table"><div style="display: table-cell">Modifier:&nbsp;&nbsp;</div><div style="display: table-cell"><input id="modifier" style="width: 30px" type="number" size="2" value="0"></input></div></div>`,
+			<div style="display: table"><div style="display: table-cell">Modifier:&nbsp;&nbsp;</div><div style="display: table-cell"><input id="modifier" style="width: 30px" type="number" size="2" value="0"></input></div></div><br>`,
 			buttons: {
 				next: { label: "Wealth Roll", callback: (html) =>
 					{
@@ -170,31 +75,38 @@ export class Wealth {
 				remove: { label: "Remove Item", callback: () => (null) },
 			},
 			close: () => ( 0 )
-		});		
+		});
 		
-		if (quantity == 0)
+		if (quantity <= 0 && quantity !== null)
 			return;
+
+		let totalCost = item.system.price * quantity;
+
+		let maximum = game.settings.get('swade-ws', 'maximum');
+		if (totalCost > maximum) {
+			ChatMessage.create({content: `The cost of ${item.name} x ${quantity} ($${totalCost}) exceeds the maximum allowed for a Wealth roll ($${maximum}).`});
+			quantity = null;
+		}
+
 		if (quantity == null) {
 			actor.deleteEmbeddedDocuments("Item", [item._id]);
 			return;
 		}
-		
-		let totalCost = item.system.price * quantity;
 
-		let modifier = -10;
-		for (let i = 0; i < this.purchaseTable.length; i++) {
-			if (totalCost <= this.purchaseTable[i].cost) {
-				modifier = this.purchaseTable[i].modifier;
-				break;
-			}
-		}
 		// Exit if cost is below the wealth threshhold.
-		if (modifier === null) {
+		if (totalCost < incidentals) {
 			// Track the number of minor purchases in the flags for the character.
-			ui.notifications.notify(`The purchase of ${item.name} ($${totalCost}) is not large enough to warrant a Wealth Die roll.`);
+			ChatMessage.create({content: `The purchase of ${item.name} ($${totalCost}) is not large enough to warrant a Wealth Die roll.`});
 			return;
 		}
-		
+
+		let modifier = 0;
+		for (let i = 0; i < this.purchaseTable.length; i++) {
+			modifier = this.purchaseTable[i].modifier;
+			if (totalCost <= this.purchaseTable[i].cost)
+				break;
+		}
+
 		modifier += rollMod;
 
 		let done = false;
@@ -221,10 +133,10 @@ export class Wealth {
 				outcome = 'Success';
 			} else {
 				outcome = 'Failure';
-				res = 'Failure: roll failed, you may Go Broke to purchase anyway.';
+				res = 'Failure: roll failed, Go Broke to purchase anyway.';
 			}
 
-			const text = `<b>${outcome}:</b> Wealth Roll to purchase ${quantity} of ${item.name}`;
+			const text = `<b>${outcome}:</b> Wealth Roll to purchase ${item.name} x ${quantity}.`;
 			roll.toMessage({flavor: text}, {flavor: text});
 
 			if (roll.total >= 8 || actor.system.bennies.value <= 0)
@@ -245,16 +157,18 @@ export class Wealth {
 				done = true;
 			else {
 				await actor.update({[`system.bennies.value`]: actor.system.bennies.value - 1});
+				ChatMessage.create({content: `${actor.name} spent a Benny to reroll Wealth.`});
 			}
 		}
 
-		// Send the result to the chat.
+		// Send the result to the chat, deal with any reductions to Wealth Die, etc.
 
 		let content;
 		let deleteItem = false;
 
 		if (critFail) {
-			content = `The Wealth roll was a <b>critical failure</b>: ${roll.total} = ${roll.result}! You cannot buy ${item.name} x ${quantity} and may not make another Wealth roll for a week.`;
+			const critfailwait = game.settings.get('swade-ws', 'critfailwait');
+			content = `The Wealth roll was a <b>critical failure</b>: ${roll.total} = ${roll.result}! ${actor.name} cannot buy ${item.name} x ${quantity} and may not make another Wealth roll for ${critfailwait}.`;
 			deleteItem = true;
 		} else if (roll.total < 4) {
 			const buyItAnyway = await Dialog.wait({
@@ -267,24 +181,36 @@ export class Wealth {
 				close: () => ( false )
 			});		
 			if (buyItAnyway) {
-				content = `You bought ${item.name} x ${quantity} and <b>went broke</b> after the Wealth roll failed: ${roll.total} = ${roll.result}.`;
+				content = `${actor.name} bought ${item.name} x ${quantity} and <b>went broke</b> after the Wealth roll failed: ${roll.total} = ${roll.result}.`;
 				await actor.update({[`system.details.wealth.die`]: 0});
 			} else {
-				content = `You did not buy ${item.name} x ${quantity}. The Wealth roll failed: ${roll.total} = ${roll.result}.`;
+				content = `${actor.name} did not buy ${item.name} x ${quantity}. The Wealth roll failed: ${roll.total} = ${roll.result}.`;
 				deleteItem = true;
 			}
 		} else if (roll.total < 8) {
 			if (wd <= 4) {
-				content = `You bought ${item.name} x ${quantity} and you went broke because your Wealth die was d4. Your Wealth roll <b>succeeded</b>: ${roll.total} = ${roll.result}.`;
+				const goBroke = await Dialog.confirm({
+				  title: "Go Broke?",
+				  content: `<p>Wealth Support roll succeeded: ${roll.total} = ${roll.result}, but Wealth Die is d4. Should ${actor.name} <b>go broke</b> for Wealth Support roll?</p>
+				  <p>Click Yes to Go Broke, No to cancel purchase and remove  ${item.name}.</p>`,
+				  yes: (html) => { return true; },
+				  no: (html) => { return false; }
+				});
+				if (!goBroke) {
+					await actor.deleteEmbeddedDocuments("Item", [item._id]);
+					return;
+				}
+
+				content = `${actor.name} bought ${item.name} x ${quantity} and ${actor.name} <b>went broke</b> because the Wealth die was d4. The Wealth roll <b>succeeded</b>: ${roll.total} = ${roll.result}.`;
 				wd = 0;
 			} else {
 				wd -= 2;
-				content = `You bought ${item.name} x ${quantity} and your Wealth die decreased by a die type to d${wd}. Wealth roll <b>succeeded</b>: ${roll.total} = ${roll.result}.`;
+				content = `${actor.name} bought ${item.name} x ${quantity}. Wealth die decreased by a die type to d${wd}. Wealth roll <b>succeeded</b>: ${roll.total} = ${roll.result}.`;
 			}
 			await actor.update({[`system.details.wealth.die`]: wd});
 		} else {
 			ui.notifications.notify('Wealth Roll was a raise!');
-			content = `You bought ${item.name} x ${quantity} and your Wealth die is unchanged. Wealth roll was a <b>raise</b>: ${roll.total} = ${roll.result}.`;
+			content = `${actor.name} bought ${item.name} x ${quantity}. Wealth die is unchanged. Wealth roll was a <b>raise</b>: ${roll.total} = ${roll.result}.`;
 		}
 
 		if (deleteItem) {
@@ -324,7 +250,7 @@ export class Wealth {
 			let msg = await roll.toMessage({flavor: text}, {flavor: text});
 
 			let results = roll.terms[0].results;
-			let critFail = results[0].result == 1 && results[1].result == 1;
+			critFail = results[0].result == 1 && results[1].result == 1;
 			if (roll.total >= 8)
 				break;
 			if (actor.system.bennies.value <= 0)
@@ -332,28 +258,70 @@ export class Wealth {
 			// See if user wants to use a benny for reroll.
 			let res;
 			if (critFail)
-				res = 'Critical Failure: must wait to make purchase.';
+				res = `Critical Failure: must wait ${game.settings.get('swade-ws', 'critfailwait')}.`;
 			else if (roll.total >= 4)
-				res = `Success: purchase will reduce Weath Die type (currently d${wd}).`;
+				res = `Success: reduce Weath Die type (currently d${wd}).`;
 			else
-				res = 'Failure: roll failed, you may Go Broke to purchase anyway.';
+				res = 'Failure: Go Broke or Cancel.';
 			const outcome = await Dialog.wait({
 				title: `Support Wealth Roll Result`,
 				content: `<p>${res}</p><p>&nbsp;&nbsp;&nbsp;Result: ${roll.total} = ${roll.result}</p><p>Bennies: ${actor.system.bennies.value}</p>`,
 				buttons: {
 					next: { label: "Use Roll", callback: (html) => (1) },
-					reroll: { label: "Spend Benny to Reroll", callback: () => (0) }
+					reroll: { label: "Spend Benny to Reroll", callback: () => (0) },
+					cancel: { label: "Cancel", callback: () => (-1) }
 				},
 				close: () => ( 1 )
-			});		
+			}, "", {width: 600});		
 			if (outcome == -1)
 				return;
 			if (outcome == 1)
 				done = true;
 			else {
 				await actor.update({[`system.bennies.value`]: actor.system.bennies.value - 1});
+				ChatMessage.create({content: `${actor.name} spent Benny to suppoert Wealth roll.`});
 			}
 		}
+		if (critFail) {
+			ChatMessage.create({content: `${actor.name}: Wealth Support roll was a <b>critical failure</b>. Must wait ${game.settings.get('swade-ws', 'critfailwait')} to try again.`});
+			return;
+		}
+		if (roll.total >= 8) {
+			ChatMessage.create({content: `${actor.name} <b>succeeded</b> Wealth Support roll with a <b>raise</b>. Add 1 to other character's Wealth roll.`});
+			return;
+		}
+		let message;
+		if (roll.total >= 4) {
+			wd -= 2;
+			if (wd <= 2) {
+				const goBroke = await Dialog.confirm({
+				  title: "Go Broke?",
+				  content: `<p>Wealth Support roll succeeded: ${roll.total} = ${roll.result}, but Wealth Die is d4. Should ${actor.name} <b>go broke</b> for Wealth Support roll?</p>`,
+				  yes: (html) => { return true; },
+				  no: (html) => { return false; }
+				});
+				if (!goBroke)
+					return;
+				
+				wd = 0;
+				message = `${actor.name}: Wealth Support roll <b>succeeded</b>: ${roll.total} = ${roll.result}, but <b>went broke</b>.`;
+			} else {
+				message = `${actor.name}: Wealth Support roll <b>succeeded</b>: ${roll.total} = ${roll.result}. Wealth die reduced to d${wd}.`;
+			}
+		} else {
+			const goBroke = await Dialog.confirm({
+			  title: "Go Broke?",
+			  content: `<p>Wealth Support roll failed: ${roll.total} = ${roll.result}. Should ${actor.name} <b>go broke</b> for Wealth Support roll?</p>`,
+			  yes: (html) => { return true; },
+			  no: (html) => { return false; }
+			});
+			if (!goBroke)
+				return;
+			wd = 0;
+			message = `${actor.name}: Wealth Support roll <b>failed</b>: ${roll.total} = ${roll.result} and <b>went broke</b>.`;
+		}
+		ChatMessage.create({content: message + " Add 1 to other character's Wealth roll."});
+		await actor.update({[`system.details.wealth.die`]: wd});
 	}
 	
 	async manage(actor) {
@@ -368,7 +336,7 @@ export class Wealth {
 			title: `Manage Wealth: ${actor.name}`,
 			content: `<p>Current Wealth Die: ${wd==0?'Broke':'d'+wd}, Base Wealth Die: d${bwd}.</p>
 			<p>To grant a Reward to the character enter a value in Reward and click Add Reward. This will increase the Wealth die by the indicated number of die types (maximum of d12).</p>
-			<p>To adjust the Wealth Die up for the passage of time, click Adjust Wealth.</p>
+			<p>To adjust the Wealth Die up or down for the passage of time, click Adjust Wealth.</p>
 			<p>To set the Base Wealth Die (the permanent value) enter a value in Base Wealth Die and click Set Base Wealth.</p>
 			<p>To make a Wealth Die support roll to give another character a +1 modifier on their Wealth roll click Support Roll.</p>
 			<div style="display: table"><div style="display: table-cell">Reward:&nbsp;&nbsp;</div><div style="display: table-cell"><input id="reward" style="width: 30px" type="number" size="2" value="0"></input></div></div>
@@ -405,9 +373,9 @@ export class Wealth {
 		case 'adjust':
 			await this.adjust(actor);
 			if (actor.system.details.wealth.die != wd)
-				ChatMessage.create({content: `Adjusted ${actor.name}'s wealth die to d${actor.system.details.wealth.die}`});
+				ChatMessage.create({content: `Adjusted ${actor.name}'s wealth die to d${actor.system.details.wealth.die} for the passage of time.`});
 			else
-				ui.notifications.notify(`${actor.name}'s Wealth Die unchanged at ${wd}.`);
+				ui.notifications.notify(`${actor.name}'s Wealth Die unchanged at d${wd}.`);
 			break;
 		case 'set':
 			if (baseWealthDie == "") {
@@ -456,12 +424,13 @@ export class Wealth {
 		let wd = actor.system.details.wealth.die;
 		if (wd == baseWealthDie)
 			return 0;
-		// Adjust the wealth die up if lower than base.
+		// Adjust the wealth die up if lower than base, down if higher.
 		if (wd < baseWealthDie) {
 			if (wd <= 0)
 				wd = 2;
 			wd += 2;
-		}
+		} else
+			wd -= 2;
 		await actor.update({[`system.details.wealth.die`]: wd});
 		return 1;
 	}
@@ -470,7 +439,7 @@ export class Wealth {
 		let n = 0;
 		for (let token of canvas.tokens.controlled) {
 			let actor = token.actor;
-			if (actor.type == 'character') {
+			if (actor.type == 'character' || actor.type == 'npc') {
 				n += await this.adjust(actor);
 			}
 		}
@@ -493,7 +462,7 @@ export class Wealth {
 		let n = 0;
 		for (let token of canvas.tokens.controlled) {
 			let actor = token.actor;
-			if (actor.type == 'character') {
+			if (actor.type == 'character' || actor.type == 'npc') {
 				this.reward(actor, reward);
 				n++;
 			}
@@ -519,15 +488,64 @@ export class Wealth {
  * Create the configuration settings.
  */
 Hooks.once('init', async function () {
+	game.settings.register('swade-ws', 'rollwealth', {
+	  name: 'Wealth Rolls',
+	  hint: 'Make Wealth rolls when items with a non-zero price are added to characters.',
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: Boolean,       // Number, Boolean, String, Object
+	  default: false,
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
 	game.settings.register('swade-ws', 'wealthtable', {
 	  name: 'Wealth Table',
-	  hint: '10 (weath die multiplier for no charge), value1:modifier1, value2:modifier2, ...',
+	  hint: 'List of value:modifier entries separated by commas. If item price <= value, modifier is applied to the wealth roll.',
 	  scope: 'world',     // "world" = sync to db, "client" = local storage
 	  config: true,       // false if you dont want it to show in module config
 	  type: String,       // Number, Boolean, String, Object
-	  default: "10, 500:+1, 1000:0, 2000:-1, 4000:-2, 8000:-3, 16000:-4, 32000:-5, 64000:-6, 128000:-7, 256000:-8, 512000:-9",
+	  default: "500:+1, 1000:0, 2000:-1, 4000:-2, 8000:-3, 16000:-4, 32000:-5, 64000:-6, 128000:-7, 256000:-8, 512000:-9, 1000000,-10",
 	  onChange: value => { // value is the new value of the setting
-		//console.log('swade-ws | budget: ' + value)
+	  }
+	});
+	game.settings.register('swade-ws', 'incidentals', {
+	  name: 'Incidentals Limit',
+	  hint: 'Multiplier for the wealth die: if an item with a price less than this value times the Wealth Die is added no roll is made.',
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: Number,       // Number, Boolean, String, Object
+	  default: 10,
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
+	game.settings.register('swade-ws', 'maximum', {
+	  name: 'Maximum Amount',
+	  hint: 'Maximum cost allowed for a Wealth roll.',
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: Number,       // Number, Boolean, String, Object
+	  default: 1000000,
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
+	game.settings.register('swade-ws', 'adjustwait', {
+	  name: 'Adjustment Period',
+	  hint: "Time to wait between adjustments back to the base Wealth Die",
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: String,       // Number, Boolean, String, Object
+	  default: "a month",
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
+	game.settings.register('swade-ws', 'critfailwait', {
+	  name: 'Critical Failure Wait',
+	  hint: "Time to wait after critical failure.",
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: String,       // Number, Boolean, String, Object
+	  default: "a week",
+	  onChange: value => { // value is the new value of the setting
 	  }
 	});
 
@@ -543,13 +561,14 @@ Hooks.on("createItem", async function(item, sheet, data) {
 	// Exit immediately if item was created by another user.
 	if (data != game.user.id || !item.parent)
 		return;
-	await game.SwadeWealth.buy(item, sheet);
+	if (game.settings.get('swade-ws', 'rollwealth'))
+		await game.SwadeWealth.buy(item, sheet);
 });
 
 
 function insertActorHeaderButtons(actorSheet, buttons) {
   let actor = actorSheet.object;
-  if (actor.type != 'character')
+  if (actor.type != 'character' && actor.type != 'npc')
 	  return;
   buttons.unshift({
     label: "Wealth",
