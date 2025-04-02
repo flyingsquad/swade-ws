@@ -13,8 +13,7 @@ export class Wealth {
 		await actor.setFlag('swade-ws', 'baseWealth', actor.system.details.wealth.die);
 	}
 
-	async buy(item, sheet) {
-		let actor = sheet.parent;
+	async buy(item, actor) {
 		if (actor.type != 'character' && actor.type != 'npc')
 			return;
 		if (!item?.system?.price)
@@ -25,17 +24,18 @@ export class Wealth {
 		if (actor.system.details.wealth.die <= 0) {
 			const takeItAnyway = await Dialog.wait({
 				title: `${actor.name} Is Broke`,
-				content: `${actor.name} added ${item.name} to Gear and is <b>Broke</b>.`,
+				content: `${actor.name} tried to buy ${item.name} and is <b>Broke</b>.`,
 				buttons: {
-					add: { label: "Add Anyway", callback: (html) => (true) },
-					dontAdd: { label: "Don't Add", callback: () => (false) },
+					add: { label: "Buy Anyway", callback: (html) => (true) },
+					dontAdd: { label: "Don't Buy", callback: () => (false) },
 				},
 				close: () => ( false )
 			});
 			if (!takeItAnyway) {
-				actor.deleteEmbeddedDocuments("Item", [item._id]);
+				if (!item.isService)
+					actor.deleteEmbeddedDocuments("Item", [item._id]);
 			} else {
-				ChatMessage.create({content: `${actor.name} is <b>broke</b> and added ${item.name} anyway.`});
+				ChatMessage.create({content: `${actor.name} is <b>broke</b> and bought ${item.name} anyway.`});
 			}
 			return;
 		}
@@ -55,7 +55,14 @@ export class Wealth {
 				this.purchaseTable.push({cost: Number(cost), modifier: Number(modifier)});
 			}
 		}
-		
+
+		let baseMod = 0;
+		for (let i = 0; i < this.purchaseTable.length; i++) {
+			baseMod = this.purchaseTable[i].modifier;
+			if (item.system.price <= this.purchaseTable[i].cost)
+				break;
+		}
+
 		// Get the quantity of items bought from the player and whether
 		// the item should be charged at all.
 		
@@ -63,9 +70,9 @@ export class Wealth {
 		const quantity = await Dialog.wait({
 			title: `Wealth Roll for ${item.name}`,
 			content: 
-			`<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to add.</p>
-			<p>Also enter any modifier for deals, rarity, etc.</p>
-			<p>Click No Wealth Roll to add the item without making a Wealth roll, or Remove Item to remove it from the Gear list.</p>
+			`<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to buy.</p>
+			<p>The Wealth roll modifier for 1 ${item.name} at cost of ${item.system.price} is ${baseMod>0?'+':''}${baseMod}. Enter any additional modifier below for deals, rarity, etc.</p>
+			<p>Click No Wealth Roll to buy ${item.name} without making a Wealth roll, or Cancel Purchase to completely cancel transaction.</p>
 			<table>
 				<tr>
 					<td style="width: 20%">Quantity:</td>
@@ -84,7 +91,7 @@ export class Wealth {
 					}
 				},
 				noroll: { label: "No Wealth Roll", callback: () => (0) },
-				remove: { label: "Remove Item", callback: () => (null) },
+				remove: { label: "Cancel Purchase", callback: () => (null) },
 			},
 			close: () => ( 0 )
 		});
@@ -102,7 +109,8 @@ export class Wealth {
 		}
 
 		if (quantity == null) {
-			actor.deleteEmbeddedDocuments("Item", [item._id]);
+			if (!item.isService)
+				actor.deleteEmbeddedDocuments("Item", [item._id]);
 			return;
 		}
 
@@ -205,18 +213,19 @@ export class Wealth {
 			if (wd <= 4) {
 				const goBroke = await Dialog.confirm({
 				  title: "Go Broke?",
-				  content: `<p>Wealth Support roll succeeded: ${roll.total} = ${roll.result}, but Wealth Die is d4. Should ${actor.name} <b>go broke</b> for Wealth Support roll?</p>
-				  <p>Click Yes to Go Broke, No to cancel purchase and remove  ${item.name}.</p><br>`,
+				  content: `<p>Wealth roll succeeded: ${roll.total} = ${roll.result}, but Wealth Die is d4. Should ${actor.name} <b>go broke</b> for purchase?</p>
+				  <p>Click Yes to Go Broke, No to cancel purchase.</p><br>`,
 				  yes: (html) => { return true; },
 				  no: (html) => { return false; }
 				});
 				if (!goBroke) {
-					await actor.deleteEmbeddedDocuments("Item", [item._id]);
-					return;
+					if (!item.isService)
+						deleteItem = true;
+					content = `Wealth roll <b>succeeded</b>, but purchase cancelled  ${itemName} purchase of because Wealth die is d4 and ${actor.name} would <b>go broke</b>.`;
+				} else {
+					content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: ${actor.name} <b>went broke</b> (Wealth die was d4).`;
+					wd = 0;
 				}
-
-				content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: ${actor.name} <b>went broke</b> (Wealth die was d4).`;
-				wd = 0;
 			} else {
 				wd -= 2;
 				content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: Wealth die decreased to d${wd}.`;
@@ -228,11 +237,13 @@ export class Wealth {
 		}
 
 		if (deleteItem) {
-			await actor.deleteEmbeddedDocuments("Item", [item._id]);
+			if (!item.isService)
+				await actor.deleteEmbeddedDocuments("Item", [item._id]);
 		} else {
 			// Make sure the quantity is right.
 			if (quantity != item.system.quantity) {
-				await actor.updateEmbeddedDocuments("Item", [{ "_id": item._id, ['system.quantity']: quantity }]);
+				if (!item.isService)
+					await actor.updateEmbeddedDocuments("Item", [{ "_id": item._id, ['system.quantity']: quantity }]);
 			}
 		}
 		rollMsg.update({flavor: `<span style="font-size: 14px; color: black">${content}</span>`});
@@ -360,33 +371,14 @@ export class Wealth {
 
 		let bwd = actor.getFlag('swade-ws', 'baseWealth');
 		let wd = actor.system.details.wealth.die;
-
+		
 		const action = await Dialog.wait({
 			title: `Manage Wealth: ${actor.name}`,
-			content: `<p>Current Wealth Die: ${wd==0?'Broke':'d'+wd}, Base Wealth Die: d${bwd}.</p>
-			<p>To grant a Reward to the character enter a value in Reward and click Add Reward. This will increase the Wealth die by the indicated number of die types (maximum of d12).</p>
-			<p>To adjust the Wealth Die up or down for the passage of time, click Adjust Wealth.</p>
-			<p>To set the Base Wealth Die (the permanent value) enter a value in Base Wealth Die and click Set Base Wealth.</p>
-			<p>To make a Wealth Die support roll to give another character a +1 modifier on their Wealth roll click Support Roll.</p>
-			<table style="padding: 3px 3px 3px 3px">
-				<tr>
-					<td style="width: 20%">Reward:</td>
-					<td><input id="reward" style="width: 60px" type="number" size="4" value="0"></input></td>
-				</tr>
-				<tr>
-					<td style="width: 20%">Base Wealth Die:</td>
-					<td><input id="base" style="width: 60px" type="text" size="4" value=""></input></td>
-				</tr>
-			</table>`,
+			content: `<label style="font-size:14px;display:flex;align-items:center;margin-bottom: 5px;"></label>`,
 			buttons: {
-				next:
-				{ label: "Add Reward", callback: (html) =>
-					{
-						reward = Number(html.find('#reward').val());
-						return 'reward';
-					}
-				},
-				adjust: { label: "Adjust Wealth", callback: () => ('adjust') },
+				service: {label: "Buy Service", callback: (html) => ('service')},
+				reward: { label: "Add Reward", callback: (html) => ( 'reward' ) },
+				adjust: { label: "Adjust Wealth", callback: (html) => ('adjust') },
 				set: { label: "Set Base Wealth", callback: (html) => 
 					{
 						baseWealthDie = html.find('#base').val();
@@ -396,12 +388,38 @@ export class Wealth {
 				support: {label: "Support Roll", callback: () => ('support')},
 				cancel: { label: "Cancel", callback: () => ('cancel') },
 			},
-			close: () => ( 'cancel' )
-		}, "", {width: 600});
+			close: () => ( 'cancel' ),
+			classes: 'horizontal-dialog'
+		},{classes:["vertical-buttons"]});
+
 		switch (action) {
 		case 'reward':
+			const reward = await Dialog.wait({
+				title: `Reward: ${actor.name}`,
+				content: `
+				<p>Enter a value in Reward and click Add Reward. This will increase the Wealth die by the indicated number of die types (maximum of d12).</p>
+					<table style="padding: 3px 3px 3px 3px">
+						<tr>
+							<td style="width: 20%">Reward:</td>
+							<td><input id="reward" style="width: 60px" type="number" size="4" value="0"></input></td>
+						</tr>
+					</table>`,
+				buttons: {
+					next:
+					{ label: "Add Reward", callback: (html) =>
+						{
+							return Number(html.find('#reward').val());
+						}
+					},
+					cancel: {label: "Cancel", callback: () => (-1)},
+				},
+				close: () => ( -1 )
+			});
+			if (reward < 0)
+				return;
+
 			if (reward == 0) {
-				ui.notifications.notify("Enter a value in Rewards.");
+				ui.notifications.notify("Enter a value in Reward.");
 				return;
 			}
 			this.reward(actor, reward);
@@ -415,6 +433,30 @@ export class Wealth {
 				ui.notifications.notify(`${actor.name}'s Wealth Die unchanged at d${wd}.`);
 			break;
 		case 'set':
+			const baseWealthDie = await Dialog.wait({
+				title: `Set Base Wealth: ${actor.name}`,
+				content: `
+				<p>To set the Base Wealth Die (the permanent value) enter a value in Base Wealth Die and click Set Base Wealth.</p>
+					<table style="padding: 3px 3px 3px 3px">
+						<tr>
+							<td style="width: 40%">Base Wealth Die:</td>
+							<td><input id="base" style="width: 60px" type="text" size="4" value=""></input></td>
+						</tr>
+					</table>`,
+				buttons: {
+					set: { label: "Set Base Wealth", callback: (html) => 
+						{
+							return html.find('#base').val();
+						}
+					},
+					cancel: {label: "Cancel", callback: () => (-1)},
+				},
+				close: () => ( -1 )
+			});
+
+			if (baseWealthDie < 0)
+				return;
+		
 			if (baseWealthDie == "") {
 				ui.notifications.notify("Enter a value in Base Wealth Die.");
 				return;
@@ -434,6 +476,41 @@ export class Wealth {
 			break;
 		case 'support':
 			this.wealthSupport(actor);
+			break;
+		case 'service':
+			Dialog.wait({
+				title: `Pay for Service`,
+				content: `
+				<p>Enter the name of the service and the cost.</p>
+					<table style="padding: 3px 3px 3px 3px">
+						<tr>
+							<td style="width: 30%">Service:</td>
+							<td><input id="service" style="width: 300px" type="text" value=""></input></td>
+						</tr>
+						<tr>
+							<td style="width: 20%">Service Cost:</td>
+							<td><input id="cost" style="width: 60px" type="number" size="4" value="0"></input></td>
+						</tr>
+					</table>`,
+				buttons: {
+					set: { label: "Pay for Service", callback: (html) => 
+						{
+							let cost = Number(html.find('#cost').val());
+							if (!cost || cost <= 0) {
+								ui.notifications.notify('Enter the cost of the service in Service Cost.');
+								return;
+							}
+							let service = html.find('#service').val();
+							if (!service)
+								service = "Service";
+							let item = {name: service, isService: true, system: {price: cost, quantity: 1}};
+							this.buy(item, actor);
+						}
+					},
+					cancel: {label: "Cancel", callback: () => (-1)},
+				},
+				close: () => ( -1 )
+			});
 			break;
 		}
 	}
@@ -528,6 +605,51 @@ export class Wealth {
 			},
 			close: () => ( 0 )
 		});
+	}
+
+	async setTokenImage() {
+		if (canvas.tokens.controlled.length != 1) {
+			ui.notifications.notify('Select one token.');
+			return;
+		}
+
+		let token = canvas.tokens.controlled[0];
+		let actor = game.actors.get(token.document.actorId);
+
+		const portraitFolder = "/";
+		let tokenPicker = new FilePicker({
+			type: "image",
+			displayMode: "tiles",
+			current: portraitFolder,
+			callback: (file) => {
+				token.document.update({
+					"ring.enabled": false,
+					"ring.subject.texture": "",
+					"texture.src": file, 
+					"texture.scaleX": 0.8, 
+					"texture.scaleY": 0.8, 
+					"bar1.attribute": "wounds",
+					"bar2.attribute": "fatigue",
+					"displayBars": 30,
+					"displayName": 30
+				});
+
+				actor.update({
+					"img": file,
+					"prototypeToken.ring.enabled": false,
+					"prototypeToken.ring.subject.texture": "",
+					"prototypeToken.texture.src": file, 
+					"prototypeToken.texture.scaleX": 0.8, 
+					"prototypeToken.texture.scaleY": 0.8, 
+					"prototypeToken.bar1.attribute": "wounds",
+					"prototypeToken.bar2.attribute": "fatigue",
+					"prototypeToken.displayBars": 30,
+					"displayName": 30
+				});
+			},
+			close: () => {return null}
+		});
+		tokenPicker.render();
 	}
 
 	async rewardTokens() {
@@ -646,7 +768,7 @@ Hooks.on("createItem", async function(item, sheet, data) {
 	if (data != game.user.id || !item.parent)
 		return;
 	if (game.settings.get('swade-ws', 'rollwealth'))
-		await game.SwadeWealth.buy(item, sheet);
+		await game.SwadeWealth.buy(item, sheet.parent);
 });
 
 
