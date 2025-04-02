@@ -24,7 +24,7 @@
 	  }
 	]
   },
-  "url": "https://github.com/flyingsquad/swade-charcheck",
+  "url": "https://github.com/flyingsquad/swade-ws",
   "manifest": "https://raw.githubusercontent.com/flyingsquad/swade-ws/main/module.json",
   "version": "0.0.1",
   "download": "https://github.com/flyingsquad/swade-ws/archive/refs/tags/v0.0.1.zip"
