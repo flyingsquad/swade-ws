@@ -803,7 +803,7 @@ Hooks.once('init', async function () {
 
 Hooks.on("createItem", async function(item, sheet, data) {
 	// Exit immediately if item was created by another user.
-	if (data != game.user.id || !item.parent)
+	if (data != game.user.id || !item.parent || sheet.isItemGrant)
 		return;
 	if (game.settings.get('swade-ws', 'rollwealth'))
 		await game.SwadeWealth.buy(item, sheet.parent);
