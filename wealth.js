@@ -118,6 +118,7 @@ export class Wealth {
 		let maxCost = game.settings.get('swade-ws', 'maximum');
 		let maximum = maxCost.replaceAll(/wealth die/gi, wd);
 		maximum = maximum.replaceAll(/wd/gi, wd);
+		maximum = maximum.replaceAll(/[A-Za-z]/g, '');
 
 		try {
 			maximum = eval(maximum);
@@ -126,7 +127,7 @@ export class Wealth {
 			return;
 		}
 		if (totalCost > maximum) {
-			ChatMessage.create({content: `The cost of ${itemName} ($${totalCost}) exceeds the maximum allowed for a Wealth roll ($${maxCost}).`});
+			ChatMessage.create({content: `The cost of ${itemName} ($${totalCost}) exceeds the maximum allowed for a Wealth roll: $${maximum} (${maxCost}).`});
 			quantity = null;
 		}
 
