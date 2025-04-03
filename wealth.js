@@ -15,21 +15,9 @@ export class Wealth {
 	
 
 	async buy(item, actor) {
-		function isGranted(actor, item) {
-			for (const it of actor.items) {
-				const grants = it.getFlag('swade', 'hasGranted');
-				if (grants) {
-					return grants.includes(item._id);
-				}
-			}
-			return false;
-		}
-
-		if (actor.type != 'character' && actor.type != 'npc')
+		if (actor.type != 'character')
 			return;
 		if (!item?.system?.price || item.system.price <= 0)
-			return;
-		if (isGranted(actor, item))
 			return;
 
 		await this.setBaseWealth(actor);
