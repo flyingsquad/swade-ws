@@ -12,11 +12,24 @@ export class Wealth {
 			return;
 		await actor.setFlag('swade-ws', 'baseWealth', actor.system.details.wealth.die);
 	}
+	
 
 	async buy(item, actor) {
+		function isGranted(actor, item) {
+			for (const it of actor.items) {
+				const grants = it.getFlag('swade', 'hasGranted');
+				if (grants) {
+					return grants.includes(item._id);
+				}
+			}
+			return false;
+		}
+
 		if (actor.type != 'character' && actor.type != 'npc')
 			return;
-		if (!item?.system?.price)
+		if (!item?.system?.price || item.system.price <= 0)
+			return;
+		if (isGranted(actor, item))
 			return;
 
 		await this.setBaseWealth(actor);
@@ -67,7 +80,7 @@ export class Wealth {
 		// the item should be charged at all.
 		
 		let rollMod = 0;
-		const quantity = await Dialog.wait({
+		let quantity = await Dialog.wait({
 			title: `Wealth Roll for ${item.name}`,
 			content: 
 			`<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to buy.</p>
@@ -102,9 +115,18 @@ export class Wealth {
 		let totalCost = item.system.price * quantity;
 		let itemName = quantity > 1 ? `${item.name} x ${quantity}` : item.name;
 
-		let maximum = game.settings.get('swade-ws', 'maximum');
+		let maxCost = game.settings.get('swade-ws', 'maximum');
+		let maximum = maxCost.replaceAll(/wealth die/gi, wd);
+		maximum = maximum.replaceAll(/wd/gi, wd);
+
+		try {
+			maximum = eval(maximum);
+		} catch (msg) {
+			ui.notifications.error(`There's an error in the Maximum Amount setting for the wealth system: (${maxCost})`);
+			return;
+		}
 		if (totalCost > maximum) {
-			ChatMessage.create({content: `The cost of ${itemName} ($${totalCost}) exceeds the maximum allowed for a Wealth roll ($${maximum}).`});
+			ChatMessage.create({content: `The cost of ${itemName} ($${totalCost}) exceeds the maximum allowed for a Wealth roll ($${maxCost}).`});
 			quantity = null;
 		}
 
@@ -187,6 +209,9 @@ export class Wealth {
 
 		let content;
 		let deleteItem = false;
+		let brokewait = game.settings.get('swade-ws', 'brokewait');
+		if (brokewait)
+			brokewait = ` Declined to Go Broke. Must wait ${brokewait} before another Wealth roll.`;
 
 		if (critFail) {
 			const critfailwait = game.settings.get('swade-ws', 'critfailwait');
@@ -206,7 +231,7 @@ export class Wealth {
 				content = `${actor.name} bought ${itemName}. Wealth roll <b>failed</b>: ${actor.name} <b>went broke</b>.`;
 				await actor.update({[`system.details.wealth.die`]: 0});
 			} else {
-				content = `${actor.name} did not buy ${itemName}. Wealth roll <b>failed</b>.`;
+				content = `${actor.name} did not buy ${itemName}. Wealth roll <b>failed</b>.` + brokewait;
 				deleteItem = true;
 			}
 		} else if (roll.total < 8) {
@@ -221,7 +246,7 @@ export class Wealth {
 				if (!goBroke) {
 					if (!item.isService)
 						deleteItem = true;
-					content = `Wealth roll <b>succeeded</b>, but purchase cancelled  ${itemName} purchase of because Wealth die is d4 and ${actor.name} would <b>go broke</b>.`;
+					content = `Wealth roll <b>succeeded</b>, but purchase cancelled  ${itemName} purchase of because Wealth die is d4 and ${actor.name} would <b>go broke</b>.` + brokewait;
 				} else {
 					content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: ${actor.name} <b>went broke</b> (Wealth die was d4).`;
 					wd = 0;
@@ -288,18 +313,17 @@ export class Wealth {
 			else if (roll.total >= 4)
 				res = `Success: reduce Weath Die type (currently d${wd}).`;
 			else
-				res = 'Failure: Go Broke or Cancel.';
+				res = 'Failure: Go Broke to Support or offer no Support.';
 			
 			const outcome = await Dialog.wait({
 				title: `Support Wealth Roll Result`,
 				content: `<p>${res}</p><p>&nbsp;&nbsp;&nbsp;Result: ${roll.total} = ${roll.result}</p><p>Bennies: ${actor.system.bennies.value}</p>`,
 				buttons: {
 					next: { label: "Use Roll", callback: (html) => (1) },
-					reroll: { label: "Spend Benny to Reroll", callback: () => (0) },
-					cancel: { label: "Cancel", callback: () => (-1) }
+					reroll: { label: "Spend Benny to Reroll", callback: () => (0) }
 				},
 				close: () => ( 1 )
-			}, "", {width: 600});		
+			});		
 			if (outcome == -1)
 				return;
 			if (outcome == 1)
@@ -313,6 +337,9 @@ export class Wealth {
 		let content;
 		let add1 = true;
 		const oldWD = wd;
+		let brokeWait = game.settings.get('swade-ws', 'brokewait');
+		if (brokeWait)
+			brokeWait = ` Declined to Go Broke. Must wait ${brokeWait} before another Wealth roll.`;
 
 		if (critFail) {
 			content = `${actor.name}: Wealth Support roll was a <b>critical failure</b>. Must wait ${game.settings.get('swade-ws', 'critfailwait')} to try again.`;
@@ -328,7 +355,7 @@ export class Wealth {
 				  no: (html) => { return false; }
 				});
 				if (!goBroke) {
-					content = `Wealth Support cancelled to avoid going broke.`;
+					content = `Wealth Support cancelled to avoid going broke.` + brokeWait;
 					add1 = false;
 				} else {
 					wd = 0;
@@ -341,16 +368,16 @@ export class Wealth {
 		} else {
 			const goBroke = await Dialog.confirm({
 			  title: "Go Broke?",
-			  content: `<p>Wealth Support roll failed: ${roll.total} = ${roll.result}. Should ${actor.name} <b>go broke</b> to add 1 for Wealth Support roll?</p>`,
+			  content: `<p>Wealth Support roll <b>failed</b>. Should ${actor.name} <b>go broke</b> to add 1 for Wealth Support roll?</p>`,
 			  yes: (html) => { return true; },
 			  no: (html) => { return false; }
 			});
 			if (!goBroke) {
-				content = `Wealth Support cancelled to avoid going broke.`;
+				content = `Wealth Support cancelled to avoid going broke.` + brokeWait;
 				add1 = false;
 			} else {
 				wd = 0;
-				content = `${actor.name}: Wealth Support roll <b>failed</b>: ${roll.total} = ${roll.result} and <b>went broke</b>.`;
+				content = `${actor.name}: Wealth Support roll <b>failed</b> and <b>went broke</b>.`;
 			}
 		}
 
@@ -710,7 +737,7 @@ Hooks.once('init', async function () {
 	  scope: 'world',     // "world" = sync to db, "client" = local storage
 	  config: true,       // false if you dont want it to show in module config
 	  type: String,       // Number, Boolean, String, Object
-	  default: "500:+1, 1000:0, 2000:-1, 4000:-2, 8000:-3, 16000:-4, 32000:-5, 64000:-6, 128000:-7, 256000:-8, 512000:-9, 1000000,-10",
+	  default: "500:+1, 1000:0, 2000:-1, 4000:-2, 8000:-3, 16000:-4, 32000:-5, 64000:-6, 128000:-7",
 	  onChange: value => { // value is the new value of the setting
 	  }
 	});
@@ -726,21 +753,31 @@ Hooks.once('init', async function () {
 	});
 	game.settings.register('swade-ws', 'maximum', {
 	  name: 'Maximum Amount',
-	  hint: 'Maximum cost allowed for a Wealth roll.',
+	  hint: 'Maximum cost allowed for a Wealth roll: a number or expression of the form "Wealth Die * 10000"',
 	  scope: 'world',     // "world" = sync to db, "client" = local storage
 	  config: true,       // false if you dont want it to show in module config
-	  type: Number,       // Number, Boolean, String, Object
-	  default: 1000000,
+	  type: String,       // Number, Boolean, String, Object
+	  default: "Wealth Die * 10000",
 	  onChange: value => { // value is the new value of the setting
 	  }
 	});
 	game.settings.register('swade-ws', 'adjustwait', {
 	  name: 'Adjustment Period',
-	  hint: "Time to wait between adjustments back to the base Wealth Die",
+	  hint: "Time to wait between adjustments back to the base Wealth Die.",
 	  scope: 'world',     // "world" = sync to db, "client" = local storage
 	  config: true,       // false if you dont want it to show in module config
 	  type: String,       // Number, Boolean, String, Object
 	  default: "a month",
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
+	game.settings.register('swade-ws', 'brokewait', {
+	  name: 'Broke Wait',
+	  hint: "Time to wait before making another Wealth Roll after declining to go broke.",
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: String,       // Number, Boolean, String, Object
+	  default: "a week",
 	  onChange: value => { // value is the new value of the setting
 	  }
 	});
