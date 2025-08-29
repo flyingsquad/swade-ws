@@ -19,13 +19,13 @@
         "type": "system",
         "compatibility": {
           "minimum": "4.2.0",
-          "maximum": "4.5"
+          "maximum": "5.5"
 		}
 	  }
 	]
   },
   "url": "https://github.com/flyingsquad/swade-ws",
   "manifest": "https://raw.githubusercontent.com/flyingsquad/swade-ws/main/module.json",
-  "version": "0.0.4",
-  "download": "https://github.com/flyingsquad/swade-ws/archive/refs/tags/v0.0.4.zip"
+  "version": "0.0.5",
+  "download": "https://github.com/flyingsquad/swade-ws/archive/refs/tags/v0.0.5.zip"
 }
