@@ -841,6 +841,16 @@ Hooks.once('init', async function () {
 	  onChange: value => { // value is the new value of the setting
 	  }
 	});
+	game.settings.register('swade-ws', 'npcs', {
+	  name: 'Wealth Rolls',
+	  hint: 'Make Wealth rolls for NPCs.',
+	  scope: 'world',     // "world" = sync to db, "client" = local storage
+	  config: true,       // false if you dont want it to show in module config
+	  type: Boolean,       // Number, Boolean, String, Object
+	  default: false,
+	  onChange: value => { // value is the new value of the setting
+	  }
+	});
 	game.settings.register('swade-ws', 'wealthtable', {
 	  name: 'Wealth Table',
 	  hint: 'List of value:modifier entries separated by commas. If item price <= value, modifier is applied to the wealth roll.',
@@ -920,8 +930,11 @@ Hooks.on("createItem", async function(item, sheet, data) {
 		game.SwadeWealth.itemPileTransfer.splice(index, 1);
 		return;
 	}
-	if (game.settings.get('swade-ws', 'rollwealth'))
+	if (game.settings.get('swade-ws', 'rollwealth')) {
+		if (sheet.parent.type == 'npc' && !game.settings.get('swade-ws', 'npcs'))
+			return;
 		await game.SwadeWealth.buy(item, sheet.parent);
+	}
 });
 
 
