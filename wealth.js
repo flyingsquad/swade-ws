@@ -842,7 +842,7 @@ Hooks.once('init', async function () {
 	  }
 	});
 	game.settings.register('swade-ws', 'npcs', {
-	  name: 'Wealth Rolls',
+	  name: 'NPC Wealth Rolls',
 	  hint: 'Make Wealth rolls for NPCs.',
 	  scope: 'world',     // "world" = sync to db, "client" = local storage
 	  config: true,       // false if you dont want it to show in module config
