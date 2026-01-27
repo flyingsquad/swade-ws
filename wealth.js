@@ -75,9 +75,9 @@ export class Wealth {
 		// Get the quantity of items bought from the player and whether
 		// the item should be charged at all.
 		
-		let content = `<div style="500px">
+		let content = `<div style="width: 500px">
 			<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to buy.</p>
-			<p>The Wealth roll modifier for 1 ${item.name} at cost of ${item.system.price} is ${baseMod>0?'+':''}${baseMod}. Enter any additional modifier below for deals, rarity, etc.</p>
+			<p>The Wealth roll modifier for 1 ${item.name} at cost of ${item.system.price} is ${baseMod>0?'+':''}${baseMod}. Enter a positive modifier below for a deal, or a negative number for rarity, expensive materials (a silvered weapon, for example, is a -2 modifier).</p>
 			<p>Click No Wealth Roll to buy ${item.name} without making a Wealth roll, or Cancel Purchase to completely cancel transaction.</p>
 			<p>
 				<label>Quantity:
@@ -91,7 +91,12 @@ export class Wealth {
 			</p>
 			</div>`;
 		const arg = {
-			window: {title: `Wealth Roll for ${item.name}` },
+			window: {
+				title: `Wealth Roll for ${item.name}`,
+				position: {
+					width: 500
+				}
+			},
 			content: content,
 			buttons: [
 				{
