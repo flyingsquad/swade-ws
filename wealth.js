@@ -44,6 +44,7 @@ export class Wealth {
 				if (!item.isService)
 					actor.deleteEmbeddedDocuments("Item", [item._id]);
 			} else {
+				this.addItemHistory(actor, item, 'Bought when broke');
 				ChatMessage.create({content: `${actor.name} is <b>broke</b> and bought ${item.name} anyway.`});
 			}
 			return;
@@ -115,6 +116,7 @@ export class Wealth {
 					label: "No Wealth Roll",
 					callback: () => {
 						ChatMessage.create({content: `${actor.name} added ${item.name} without a Wealth Die roll.`});
+						this.addItemHistory(actor, item, 'No Roll');
 						return;
 					}
 				},
@@ -167,6 +169,7 @@ export class Wealth {
 				if (minorPurchases < incidentals) {
 					actor.setFlag('swade-ws', 'minor', minorPurchases);
 					ChatMessage.create({content: `The cost of ${item.name} ($${totalCost}) is minor and was added to the running total (currently $${minorPurchases}) for a future wealth roll.`});
+					ws.addItemHistory(actor, item, 'Minor purchase');
 					return;
 				}
 				actor.setFlag('swade-ws', 'minor', 0);
@@ -286,6 +289,7 @@ export class Wealth {
 				if (buyItAnyway) {
 					content = `${actor.name} bought ${itemName}. Wealth roll <b>failed</b>: ${actor.name} <b>went broke</b>.`;
 					await actor.update({[`system.details.wealth.die`]: 0});
+					ws.addItemHistory(actor, item, 'Bought and went broke');
 				} else {
 					content = `${actor.name} did not buy ${itemName}. Wealth roll <b>failed</b>.` + brokewait;
 					deleteItem = true;
@@ -307,16 +311,19 @@ export class Wealth {
 						content = `Wealth roll <b>succeeded</b>, but purchase cancelled  ${itemName} purchase of because Wealth die is d4 and ${actor.name} would <b>go broke</b>.` + brokewait;
 					} else {
 						content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: ${actor.name} <b>went broke</b> (Wealth die was d4).`;
+						ws.addItemHistory(actor, item, `Roll ${roll.total}/d${wd}=>0 & went broke`);
 						wd = 0;
 					}
 				} else {
 					wd -= 2;
 					content = `${actor.name} bought ${itemName}. Wealth roll <b>succeeded</b>: Wealth die decreased to d${wd}.`;
+					ws.addItemHistory(actor, item, `Roll ${roll.total}, wealth=>d${wd}`);
 				}
 				await actor.update({[`system.details.wealth.die`]: wd});
 			} else {
 				ui.notifications.notify('Wealth Roll was a raise!');
 				content = `${actor.name} bought ${itemName}. Wealth roll was a <b>raise</b>: Wealth die unchanged.`;
+				ws.addItemHistory(actor, item, `Raise: roll ${roll.total}, wealth d${wd}`);
 			}
 
 			if (deleteItem) {
@@ -452,10 +459,47 @@ export class Wealth {
 		rollMsg.update({flavor: `<span style="font-size: 14px; color: black">${content}</span>`});
 		ui.chat.scrollBottom();
 
-		if (wd != oldWD)
+		if (wd != oldWD) {
 			await actor.update({[`system.details.wealth.die`]: wd});
+			this.addHistory(actor, "Wealth Support", wd ? `Decreased to d${wd}` : 'Went broke');
+		}
 	}
 
+	async history(actor, dispWd) {
+		let history = "";
+		const minor = actor.getFlag('swade-ws', 'minor');
+		history += `<p>Minor expense total: ${minor}</br>`;
+		let h = actor.getFlag('swade-ws', 'history');
+		if (h) {
+			history += `<b>History</b></br>`;
+			for (const it of h) {
+				history += `${it.title}: ${it.description}</br>`;
+			}
+		}
+		history += `</br><b>Purchases</b></br>`;
+		for (let it of actor.items) {
+			let result = it.getFlag('swade-ws', 'result');
+			if (result != undefined) {
+				history += `${it.name} (${it.system.quantity} x $${it.system.price}): ${result}</br>`;
+			}
+		}
+		history += `</p>`;
+
+		const content = `
+			<p>Wealth History for ${actor.name}: current wealth ${dispWd}.</p>
+			<div style="border: 1px solid black; display: flex; flex-flow: column; overflow: auto; height: 300px; width: 500px;">${history}</div>`;
+		const action = await foundry.applications.api.DialogV2.wait({
+			window: {title: `Wealth History: ${actor.name}`},
+			content: content,
+			buttons: [
+				{
+					action: "ok",
+					label: "OK",
+					callback: (event, button, dialog) => true
+				}
+			]
+		});
+	}
 	
 	async manage(actor) {
 		await this.setBaseWealth(actor);
@@ -473,6 +517,7 @@ export class Wealth {
 			<label><input type="radio" name="choice" value="adjust"> Adjust Wealth Over Time</label>
 			<label><input type="radio" name="choice" value="set"> Set Base Wealth</label>
 			<label><input type="radio" name="choice" value="support"> Support Roll</label>
+			<label><input type="radio" name="choice" value="history"> History</label>
 			`;
 		const action = await foundry.applications.api.DialogV2.wait({
 			window: {title: `Manage Wealth: ${actor.name}`},
@@ -492,6 +537,9 @@ export class Wealth {
 		});
 
 		switch (action) {
+		case 'history':
+			await this.history(actor, dispWd);
+			break;
 		case 'reward':
 			const reward = await foundry.applications.api.DialogV2.wait({
 				window: {
@@ -581,6 +629,7 @@ export class Wealth {
 					msg = `Set ${actor.name}'s wealth die to Broke.`;
 				ui.notifications.notify(msg);
 				ChatMessage.create({content: msg});
+				this.addHistory(actor, 'Set base wealth', msg);
 				break;
 			default:
 				ui.notifications.notify("Base Wealth Die must be d4, d6, d8, d10 or d12.");
@@ -651,8 +700,27 @@ export class Wealth {
 			wd = Math.min(12, wd + rewards * 2);
 			break;
 		}
+		this.addHistory(actor, "Reward", `Increased to d${wd}`);
 		await actor.update({[`system.details.wealth.die`]: wd});
 	}
+
+	async addItemHistory(actor, item, description) {
+		if (item.isService)
+			this.addHistory(actor, 'Service', description);
+		else
+			item.setFlag('swade-ws', 'result', description);
+	}
+
+	async addHistory(actor, title, description) {
+		// Create the item on the actor
+		let wealthHistory = actor.getFlag('swade-ws', 'history');
+		if (!wealthHistory)
+			wealthHistory = [];
+		wealthHistory.push({title: title, description: description});
+		
+		await actor.setFlag('swade-ws', 'history', wealthHistory);
+	}
+
 
 	async adjust(actor) {
 		await this.setBaseWealth(actor);
@@ -668,6 +736,7 @@ export class Wealth {
 		} else
 			wd -= 2;
 		await actor.update({[`system.details.wealth.die`]: wd});
+		this.addHistory(actor, "Adjust Wealth Die", `Changed to d${wd}`);
 		return 1;
 	}
 
