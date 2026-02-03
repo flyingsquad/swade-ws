@@ -76,7 +76,7 @@ export class Wealth {
 		// the item should be charged at all.
 		
 		let content = `<div style="width: 500px">
-			<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to buy.</p>
+			<p>Enter the quantity of ${item.name} (price: $${item.system.price}) to buy. Inexpensive items will be added to a running total till their cost requires a wealth roll.</p>
 			<p>The Wealth roll modifier for 1 ${item.name} at cost of ${item.system.price} is ${baseMod>0?'+':''}${baseMod}. Enter a positive modifier below for a deal, or a negative number for rarity, expensive materials (a silvered weapon, for example, is a -2 modifier).</p>
 			<p>Click No Wealth Roll to buy ${item.name} without making a Wealth roll, or Cancel Purchase to completely cancel transaction.</p>
 			<p>
@@ -166,7 +166,7 @@ export class Wealth {
 				minorPurchases += totalCost;
 				if (minorPurchases < incidentals) {
 					actor.setFlag('swade-ws', 'minor', minorPurchases);
-					ChatMessage.create({content: `The purchase of ${item.name} ($${totalCost}) is not large enough to warrant a Wealth Die roll.`});
+					ChatMessage.create({content: `The cost of ${item.name} ($${totalCost}) is minor and was added to the running total (currently $${minorPurchases}) for a future wealth roll.`});
 					return;
 				}
 				actor.setFlag('swade-ws', 'minor', 0);
