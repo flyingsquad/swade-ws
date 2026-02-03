@@ -473,7 +473,7 @@ export class Wealth {
 		if (h) {
 			history += `<b>History</b></br>`;
 			for (const it of h) {
-				history += `${it.title}: ${it.description}</br>`;
+				history += `${it.title}: ${it.description} (${it.time})</br>`;
 			}
 		}
 		history += `</br><b>Purchases</b></br>`;
@@ -708,7 +708,7 @@ export class Wealth {
 		if (item.isService)
 			this.addHistory(actor, 'Service', description);
 		else
-			item.setFlag('swade-ws', 'result', description);
+			item.setFlag('swade-ws', 'result', description + ' (' + new Date().toLocaleString() + ')');
 	}
 
 	async addHistory(actor, title, description) {
@@ -716,7 +716,7 @@ export class Wealth {
 		let wealthHistory = actor.getFlag('swade-ws', 'history');
 		if (!wealthHistory)
 			wealthHistory = [];
-		wealthHistory.push({title: title, description: description});
+		wealthHistory.push({title: title, description: description, time: new Date().toLocaleString()});
 		
 		await actor.setFlag('swade-ws', 'history', wealthHistory);
 	}
