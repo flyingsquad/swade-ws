@@ -739,16 +739,30 @@ export class Wealth {
 		this.addHistory(actor, "Adjust Wealth Die", `Changed to d${wd}`);
 		return 1;
 	}
+	
+	dispWealthDie(wealth) {
+		if (wealth.die < 4)
+			return 'Broke';
+		return 'd' + wealth.die + (wealth.modifier != 0 ? '+' + wealth.modifier : '');
+	}
 
 	async adjustTokens() {
 		let n = 0;
+		let actors = '';
 		for (let token of canvas.tokens.controlled) {
 			let actor = token.actor;
 			if (actor.type == 'character' || actor.type == 'npc') {
-				n += await this.adjust(actor);
+				if (await this.adjust(actor)) {
+					if (actors)
+						actors += ', ';
+					actors += `${actor.name} (${this.dispWealthDie(actor.system.details.wealth)})`;
+				}
 			}
 		}
-		ui.notifications.notify(`Adjusted Wealth Die of ${n} character(s)`);
+		if (actors)
+			ChatMessage.create({content: `Adjusted Wealth Die of ${actors}`});
+		else
+			ui.notifications.notify("No wealth adjustments took place.");
 	}
 
 	travelTime() {
