@@ -1033,22 +1033,23 @@ Hooks.on("item-piles-preTransferItems", async function(srcActor, srcItem, dstAct
 });
 
 function insertActorHeaderButtons(actorSheet, buttons) {
-  let actor = actorSheet.object;
+  let actor = actorSheet.actor;
   if (actor.type != 'character' && actor.type != 'npc')
 	  return;
   buttons.unshift({
+	action: "add-to-title",
     label: "Wealth",
     icon: "fas fa-dollar",
     class: "wealth-button",
-    onclick: async () => {
+    onClick: async () => {
 		try {
 			game.SwadeWealth.manage(actor);
 		} catch (msg) {
 			ui.notifications.warn(msg);
 		}
-
     }
   });
 }
 
-Hooks.on("getActorSheetHeaderButtons", insertActorHeaderButtons);
+
+Hooks.on("getHeaderControlsActorSheetV2", insertActorHeaderButtons);
