@@ -484,6 +484,25 @@ export class Wealth {
 			}
 		}
 		history += `</p>`;
+		
+		const buttons = [
+			{
+				action: "ok",
+				label: "OK",
+				callback: (event, button, dialog) => true
+			}
+		];
+		
+		if (game.user.isGM) {
+			buttons.push({
+				action: "delete",
+				label: "Delete History",
+				callback: (event, button, dialog) => {
+					actor.setFlag('swade-ws', 'history', null);
+					actor.setFlag('swade-ws', 'minor', 0);
+				}
+			});
+		}
 
 		const content = `
 			<p>Wealth History for ${actor.name}: current wealth ${dispWd}.</p>
@@ -491,13 +510,7 @@ export class Wealth {
 		const action = await foundry.applications.api.DialogV2.wait({
 			window: {title: `Wealth History: ${actor.name}`},
 			content: content,
-			buttons: [
-				{
-					action: "ok",
-					label: "OK",
-					callback: (event, button, dialog) => true
-				}
-			]
+			buttons: buttons
 		});
 	}
 	
