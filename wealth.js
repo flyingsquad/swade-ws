@@ -186,7 +186,10 @@ export class Wealth {
 			let done = false;
 			let roll;
 			let critFail;
-			let rollSpec = `{1d${wd}x[Wealth Die],1d${actor.system.details.wealth['wild-die']}x[Wild Die]}kh + ${actor.system.details.wealth.modifier}[Wealth Modifier] + ${modifier}[Cost Modifier]`;
+			let wmod = actor.system.details.wealth.modifier;
+			if (!wmod)
+				wmod = 0;
+			let rollSpec = `{1d${wd}x[Wealth Die],1d${actor.system.details.wealth['wild-die']}x[Wild Die]}kh + ${wmod}[Wealth Modifier] + ${modifier}[Cost Modifier]`;
 			let rollMsg;
 
 			while (!done) {
