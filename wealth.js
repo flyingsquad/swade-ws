@@ -6,7 +6,6 @@ export class Wealth {
 	dlg = null;
 	wealthDie = null;
 	purchaseTable = [];
-	itemPileTransfer = [];
 
 	async setBaseWealth(actor) {
 		if (actor.getFlag('swade-ws', 'baseWealth'))
@@ -1026,23 +1025,13 @@ Hooks.on("createItem", async function(item, sheet, data) {
 	if (data != game.user.id || !item.parent || sheet.isItemGrant)
 		return;
 	// Exit if this was the result of a player getting an item from a pile.
-	const index = game.SwadeWealth.itemPileTransfer.indexOf(sheet.parent._id);
-	if (index > -1) {
-		game.SwadeWealth.itemPileTransfer.splice(index, 1);
+	if (item.getFlag('item-piles', 'item'))
 		return;
-	}
 	if (game.settings.get('swade-ws', 'rollwealth')) {
 		if (sheet.parent.type == 'npc' && !game.settings.get('swade-ws', 'npcs'))
 			return;
 		await game.SwadeWealth.buy(item, sheet.parent);
 	}
-});
-
-
-Hooks.on("item-piles-preTransferItems", async function(srcActor, srcItem, dstActor, dstItem, data) {
-	// Record the actor id of the recipient so we can ignore the createItem hook
-	// to avoid having the wealth dialog pop up on the GM screen.
-	game.SwadeWealth.itemPileTransfer.push(dstActor._id);
 });
 
 function insertActorHeaderButtons(actorSheet, buttons) {
